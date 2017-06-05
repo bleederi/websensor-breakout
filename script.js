@@ -1,5 +1,5 @@
 /*
- * Websensor Fight Game
+ * Websensor Breakout Game
  * https://github.com/jessenie-intel/websensor-mazegame
  *
  * Copyright (c) 2017 Jesse Nieminen
@@ -15,6 +15,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Code from https://developer.mozilla.org/en-US/docs/Games/Tutorials/2D_Breakout_game_pure_JavaScript was used in this project
 */
 
 var sensors = {};
@@ -26,31 +28,7 @@ var shakingvar = 1;        //used for detecting shaking motion
 var sensorfreq = 30;     //for setting desired sensor frequency
 var movefreq = 1000;    //how many times a second the ball moves, TODO: affects the speed of the ball, even though probably should not
 var sensors_started = false;
-/*      Related to random event, can either remove or finish
-var mainUpdate;
-var randomEvent;
-var caught = false;
-
-*/
 var drawvar;
-
-
-class LowPassFilterData {       //https://w3c.github.io/motion-sensors/#pass-filters
-  constructor(reading, bias) {
-    Object.assign(this, { x: reading.x, y: reading.y, z: reading.z });
-    this.bias = bias;
-  }
-        update(reading) {
-                this.x = this.x * this.bias + reading.x * (1 - this.bias);
-                this.y = this.y * this.bias + reading.y * (1 - this.bias);
-                this.z = this.z * this.bias + reading.z * (1 - this.bias);
-        }
-};
-
-function magnitude(vector)      //Calculate the magnitude of a vector
-{
-return Math.sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
-}
 
 screen.orientation.lock('portrait');
 
@@ -67,155 +45,179 @@ var HEIGHT = 800;
 var img = new Image();
 var collision = 0;
 
-function rect(x,y,w,h) {
-ctx.beginPath();
-ctx.rect(x,y,w,h);
-ctx.closePath();
-ctx.fill();
-}
-function clear() {
-ctx.clearRect(0, 0, WIDTH, HEIGHT);
-ctx.drawImage(img, 0, 0);
-}
-function init() {
-canvas = document.getElementById("canvas");
-ctx = canvas.getContext("2d");
-img.src = "maze2.gif";
-startSensors();
-mainUpdate = setInterval(update, 1000/movefreq);
-return requestAnimationFrame(draw);
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
+var ballRadius = 10;
+var x = canvas.width/2;
+var y = canvas.height-30;
+var dx = 2;
+var dy = -2;
+var paddleHeight = 10;
+var paddleWidth = 75;
+var paddleX = (canvas.width-paddleWidth)/2;
+var rightPressed = false;
+var leftPressed = false;
+var brickRowCount = 5;
+var brickColumnCount = 3;
+var brickWidth = 75;
+var brickHeight = 20;
+var brickPadding = 10;
+var brickOffsetTop = 30;
+var brickOffsetLeft = 30;
+var score = 0;
+var lives = 3;
+
+var bricks = [];
+for(c=0; c<brickColumnCount; c++) {
+    bricks[c] = [];
+    for(r=0; r<brickRowCount; r++) {
+        bricks[c][r] = { x: 0, y: 0, status: 1 };
+    }
 }
 
-function checkcollision() {
-var imgd = ctx.getImageData(x, y, 15, 15);
-var pix = imgd.data;
-for (var i = 0; n = pix.length, i < n; i += 4) {
-if (pix[i] == 0) {
-collision = 1;
-}
-}
-}
-function draw() {
-clear();
-ctx.fillStyle = "purple";
-rect(x, y, 15,15);
-drawvar = requestAnimationFrame(draw);
-}
-init();
+document.addEventListener("keydown", keyDownHandler, false);
+document.addEventListener("keyup", keyUpHandler, false);
+document.addEventListener("mousemove", mouseMoveHandler, false);
 
-function hit() {        //For the enemy hitting the player
-
+function keyDownHandler(e) {
+    if(e.keyCode == 39) {
+        rightPressed = true;
+    }
+    else if(e.keyCode == 37) {
+        leftPressed = true;
+    }
 }
-
-function shakeEvent()
-{
-        if (caught == true)
-        {
-                caught = false;
-                drawvar = requestAnimationFrame(draw);
-        }
+function keyUpHandler(e) {
+    if(e.keyCode == 39) {
+        rightPressed = false;
+    }
+    else if(e.keyCode == 37) {
+        leftPressed = false;
+    }
 }
-
-function update()        //Main loop
-{
-        //filter noise
-        if(Math.abs(gravity.x) > 0.1)
-        {    
-                        dx = -0.5 * gravity['x'];
-        }     
-        if(Math.abs(gravity.y) > 0.1)
-        {            
-                        dy = 0.5 * gravity['y'];                      
-        }
-        //Simulate friction
-        dx = dx/1.01
-        dy = dy/1.01
-        //y axis
-        if(y + dy < HEIGHT && y + dy > 0)
-        {
-//                if(caught == false)   //Related to random event, can either remove or finish
-//                {
-                        y += dy;                
-                        clear();
-                        checkcollision();
-                        if (collision == 1){
-                                y -= dy;
-                                collision = 0;
-                        }
-//                }
-        }
-        if(x + dx < WIDTH && x + dx > 0)
-        {
-//                if(caught == false)   //Related to random event, can either remove or finish
-//                {
-                        x += dx;
-                        clear();
-                        checkcollision();
-                        if (collision == 1){
-                                x -= dx;
-                                collision = 0;
-//                        }
+function mouseMoveHandler(e) {
+    var relativeX = e.clientX - canvas.offsetLeft;
+    if(relativeX > 0 && relativeX < canvas.width) {
+        paddleX = relativeX - paddleWidth/2;
+    }
+}
+function collisionDetection() {
+    for(c=0; c<brickColumnCount; c++) {
+        for(r=0; r<brickRowCount; r++) {
+            var b = bricks[c][r];
+            if(b.status == 1) {
+                if(x > b.x && x < b.x+brickWidth && y > b.y && y < b.y+brickHeight) {
+                    dy = -dy;
+                    b.status = 0;
+                    score++;
+                    if(score == brickRowCount*brickColumnCount) {
+                        alert("YOU WIN, CONGRATS!");
+                        document.location.reload();
+                    }
                 }
+            }
         }
-        /* Related to random event, can either remove or finish
-        if(magnitude(diff) > (120/sensorfreq))  //with lower sensor frequencies the diff will be bigger
-        {
-                shakingvar = shakingvar + 1;
-        }
-        else
-        {
-                if(shakingvar > 0)
-                {
-                shakingvar = shakingvar - 1;
-                }
-        }
-        if(shakingvar >= 100)    //shake event
-        {
-                //console.log("SHAKE");
-                shakeEvent();
-                shakingvar = 0;
-        }
-        randomEvent = Math.random();
-        if(randomEvent > 1000*(0.99975/movefreq))
-        {
-                caught = true;
-                ctx.fillStyle = "black";
+    }
+}
+
+function drawBall() {
+    ctx.beginPath();
+    ctx.arc(x, y, ballRadius, 0, Math.PI*2);
+    ctx.fillStyle = "#0095DD";
+    ctx.fill();
+    ctx.closePath();
+}
+function drawPaddle() {
+    ctx.beginPath();
+    ctx.rect(paddleX, canvas.height-paddleHeight, paddleWidth, paddleHeight);
+    ctx.fillStyle = "#0095DD";
+    ctx.fill();
+    ctx.closePath();
+}
+function drawBricks() {
+    for(c=0; c<brickColumnCount; c++) {
+        for(r=0; r<brickRowCount; r++) {
+            if(bricks[c][r].status == 1) {
+                var brickX = (r*(brickWidth+brickPadding))+brickOffsetLeft;
+                var brickY = (c*(brickHeight+brickPadding))+brickOffsetTop;
+                bricks[c][r].x = brickX;
+                bricks[c][r].y = brickY;
                 ctx.beginPath();
-                ctx.rect(0,0,WIDTH,HEIGHT);
-                ctx.closePath();
+                ctx.rect(brickX, brickY, brickWidth, brickHeight);
+                ctx.fillStyle = "#0095DD";
                 ctx.fill();
-                ctx.font = '24px serif';
-                ctx.fillStyle = "red";
-                ctx.fillText("You have been caught by the monster!",100,200)
-                ctx.fillText("Shake the phone to free yourself!", 100, 240);
-                cancelAnimationFrame(drawvar);
+                ctx.closePath();
+            }
         }
-        */
+    }
 }
+function drawScore() {
+    ctx.font = "16px Arial";
+    ctx.fillStyle = "#0095DD";
+    ctx.fillText("Score: "+score, 8, 20);
+}
+function drawLives() {
+    ctx.font = "16px Arial";
+    ctx.fillStyle = "#0095DD";
+    ctx.fillText("Lives: "+lives, canvas.width-65, 20);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBricks();
+    drawBall();
+    drawPaddle();
+    drawScore();
+    drawLives();
+    collisionDetection();
+    
+    if(x + dx > canvas.width-ballRadius || x + dx < ballRadius) {
+        dx = -dx;
+    }
+    if(y + dy < ballRadius) {
+        dy = -dy;
+    }
+    else if(y + dy > canvas.height-ballRadius) {
+        if(x > paddleX && x < paddleX + paddleWidth) {
+            dy = -dy;
+        }
+        else {
+            lives--;
+            if(!lives) {
+                alert("GAME OVER");
+                document.location.reload();
+            }
+            else {
+                x = canvas.width/2;
+                y = canvas.height-30;
+                dx = 3;
+                dy = -3;
+                paddleX = (canvas.width-paddleWidth)/2;
+            }
+        }
+    }
+    
+    if(rightPressed && paddleX < canvas.width-paddleWidth) {
+        paddleX += 7;
+    }
+    else if(leftPressed && paddleX > 0) {
+        paddleX -= 7;
+    }
+    
+    x += dx;
+    y += dy;
+    requestAnimationFrame(draw);
+}
+
+draw();
 
 function startSensors() {
                 try {
-                //Right now we only want to use gravity sensor (low-pass filtered daccelerometer data)
                 //Accelerometer including gravity
                 accelerometer = new Accelerometer({ frequency: sensorfreq, includeGravity: true });
                 sensors.Accelerometer = accelerometer;
-                gravity =  new LowPassFilterData(accelerometer, 0.8);   //need to find good bias value
                 accelerometer.onchange = event => {
-                        prevaccel = accel;
                         accel = {x:accelerometer.x, y:accelerometer.y, z:accelerometer.z};
-                        /* Related to random event, can either remove or finish
-                        for (var key in accel)
-                                {
-                                        diff[key] = accel[key] - prevaccel[key];
-                                }
-                        */
-                        //For the ball to not move slow in the beginning due to gravity low-pass filtering taking very long, we set an initial value - only done on first accelerometer onchange event
-                        if(gravity.x == null && gravity.y == null)
-                        {
-                        gravity.x = accel.x;
-                        gravity.y = accel.y;
-                        }
-                        gravity.update(accel);
                 }
                 accelerometer.onerror = err => {
                   accelerometer = null;
